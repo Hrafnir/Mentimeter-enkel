@@ -1,21 +1,19 @@
-<!-- Version: #8 -->
+<!-- Version: #1 -->
 <!DOCTYPE html>
 <html lang="no">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Klasseroms-Avstemning</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Poll Start</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #eee; }
+        a { display: block; width: 200px; padding: 20px; margin: 10px; text-align: center; background: #333; color: white; text-decoration: none; border-radius: 8px; font-size: 1.2rem; }
+        a.client { background: #007bff; }
+    </style>
 </head>
 <body>
-    <div class="container" style="text-align: center; padding-top: 50px;">
-        <div class="card">
-            <h1>Klasseroms-stemming</h1>
-            <p>Ny teknologi (MQTT). Fungerer på 5G/4G/Wifi.</p>
-            <a href="host.html" class="btn">Lærer (Start)</a>
-            <a href="client.html" class="btn btn-secondary">Elev (Bli med)</a>
-        </div>
-    </div>
+    <h1>Velg Rolle</h1>
+    <a href="host.html">LÆRER (Host)</a>
+    <a href="client.html" class="client">ELEV (Client)</a>
 </body>
 </html>
-<!-- Version: #8 -->
