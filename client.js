@@ -1,174 +1,133 @@
-/* Version: #6 */
+/* Version: #8 */
 
-// === TILSTAND ===
-let peer = null;
-let conn = null; // Koblingen til læreren
+// === KONFIGURASJON ===
+const BROKER = "broker.emqx.io";
+const PORT = 8084; 
+const MY_ID = "client_" + Math.random().toString(16).substr(2, 8);
 
-// === DOM ELEMENTER ===
+let client = null;
+let roomCode = "";
+let connected = false;
+
 const ui = {
     statusDot: document.getElementById('status-dot'),
     statusText: document.getElementById('status-text'),
-    
     loginPanel: document.getElementById('login-panel'),
     waitPanel: document.getElementById('wait-panel'),
     votePanel: document.getElementById('vote-panel'),
     sentPanel: document.getElementById('sent-panel'),
-    
     inputCode: document.getElementById('input-code'),
     btnJoin: document.getElementById('btn-join'),
-    
     questionText: document.getElementById('question-text'),
-    choicesContainer: document.getElementById('choices-container'),
-    
-    log: document.getElementById('debug-log')
+    choicesContainer: document.getElementById('choices-container')
 };
 
-// === LOGGING ===
-function log(msg) {
-    console.log(msg);
-    // ui.log.textContent = msg; // Avkommenter hvis du vil se feilmeldinger på skjermen
-}
-
-// === NAVIGASJON ===
-function showPanel(panelName) {
-    // Skjul alle først
+function showPanel(name) {
     ui.loginPanel.classList.add('hidden');
     ui.waitPanel.classList.add('hidden');
     ui.votePanel.classList.add('hidden');
     ui.sentPanel.classList.add('hidden');
     
-    // Vis den valgte
-    if (panelName === 'login') ui.loginPanel.classList.remove('hidden');
-    if (panelName === 'wait') ui.waitPanel.classList.remove('hidden');
-    if (panelName === 'vote') ui.votePanel.classList.remove('hidden');
-    if (panelName === 'sent') ui.sentPanel.classList.remove('hidden');
+    if (name === 'login') ui.loginPanel.classList.remove('hidden');
+    if (name === 'wait') ui.waitPanel.classList.remove('hidden');
+    if (name === 'vote') ui.votePanel.classList.remove('hidden');
+    if (name === 'sent') ui.sentPanel.classList.remove('hidden');
 }
 
-function setStatus(status) {
-    if (status === 'connected') {
-        ui.statusDot.classList.add('status-connected');
-        ui.statusText.textContent = "Tilkoblet";
-    } else if (status === 'connecting') {
-        ui.statusDot.classList.remove('status-connected');
-        ui.statusText.textContent = "Kobler til...";
-    } else {
-        ui.statusDot.classList.remove('status-connected');
-        ui.statusText.textContent = "Frakoblet";
-    }
-}
-
-// === PEERJS LOGIKK ===
 function joinGame() {
     const code = ui.inputCode.value.trim().toUpperCase();
-    if (code.length !== 4) return alert("Koden må være 4 bokstaver.");
+    if (code.length !== 4) return alert("Koden må være 4 tegn.");
     
+    roomCode = code;
     ui.btnJoin.disabled = true;
     ui.btnJoin.textContent = "Kobler til...";
-    setStatus('connecting');
-
-    // Opprett peer (klient trenger ikke egen ID, får en tilfeldig)
-    peer = new Peer({ debug: 1 });
-
-    peer.on('open', (myId) => {
-        log(`Min ID: ${myId}`);
-        connectToHost(code);
-    });
-
-    peer.on('error', (err) => {
-        alert(`Kunne ikke starte nettverk: ${err.type}`);
-        resetLogin();
-    });
-}
-
-function connectToHost(hostId) {
-    log(`Prøver å koble til: ${hostId}`);
-    conn = peer.connect(hostId);
-
-    conn.on('open', () => {
-        log("Tilkoblet!");
-        setStatus('connected');
-        showPanel('wait');
-    });
-
-    conn.on('data', (msg) => {
-        handleData(msg);
-    });
-
-    conn.on('close', () => {
-        alert("Læreren koblet fra.");
-        setStatus('disconnected');
-        showPanel('login');
-        resetLogin();
-    });
     
-    // Timeout-sikring
-    setTimeout(() => {
-        if (!conn.open) {
-            log("Tidsavbrudd");
-            // Ikke gjør noe dramatisk, noen ganger tar det bare tid
-        }
-    }, 5000);
+    client = new Paho.MQTT.Client(BROKER, PORT, MY_ID);
+    client.onConnectionLost = onConnectionLost;
+    client.onMessageArrived = onMessageArrived;
+
+    const options = {
+        useSSL: true,
+        onSuccess: onConnect,
+        onFailure: onFail,
+        keepAliveInterval: 30
+    };
+    client.connect(options);
 }
 
-function resetLogin() {
+function onConnect() {
+    console.log("MQTT Tilkoblet");
+    connected = true;
+    ui.statusDot.classList.add('status-connected');
+    ui.statusText.textContent = "Tilkoblet";
+    
+    showPanel('wait');
+
+    // Abonner på meldinger FRA host
+    client.subscribe(`mentometer/${roomCode}/host`);
+
+    // Send "Jeg er her" melding
+    sendMessage(`mentometer/${roomCode}/client`, { type: 'JOIN', id: MY_ID });
+}
+
+function onFail(err) {
+    alert("Tilkobling feilet: " + err.errorMessage);
     ui.btnJoin.disabled = false;
     ui.btnJoin.textContent = "Koble til";
-    setStatus('disconnected');
-    if (peer) {
-        peer.destroy();
-        peer = null;
+}
+
+function onConnectionLost(responseObject) {
+    if (responseObject.errorCode !== 0) {
+        console.log("Mistet forbindelse: " + responseObject.errorMessage);
+        ui.statusDot.classList.remove('status-connected');
+        ui.statusText.textContent = "Frakoblet";
+        alert("Mistet kontakten med serveren.");
+        showPanel('login');
+        ui.btnJoin.disabled = false;
+        ui.btnJoin.textContent = "Koble til";
     }
 }
 
-// === SPILL-LOGIKK ===
-
-function handleData(msg) {
-    if (msg.type === 'POLL') {
-        renderPoll(msg.data);
-    } else if (msg.type === 'RESET') {
-        showPanel('wait');
+function onMessageArrived(message) {
+    try {
+        const data = JSON.parse(message.payloadString);
+        
+        if (data.type === 'POLL') {
+            renderPoll(data.data);
+        } else if (data.type === 'RESET') {
+            showPanel('wait');
+        }
+    } catch (e) {
+        console.error("Ugyldig data", e);
     }
 }
 
-function renderPoll(pollData) {
-    // pollData = { question: "...", options: ["A", "B"] }
-    ui.questionText.textContent = pollData.question;
+function sendMessage(topic, msgObj) {
+    const message = new Paho.MQTT.Message(JSON.stringify(msgObj));
+    message.destinationName = topic;
+    client.send(message);
+}
+
+function renderPoll(poll) {
+    ui.questionText.textContent = poll.question;
     ui.choicesContainer.innerHTML = '';
     
-    pollData.options.forEach((optText, index) => {
+    poll.options.forEach((opt, idx) => {
         const btn = document.createElement('button');
         btn.className = 'btn choice-btn';
-        btn.textContent = optText;
-        
+        btn.textContent = opt;
         btn.onclick = () => {
-            sendVote(index);
+            sendMessage(`mentometer/${roomCode}/client`, { type: 'VOTE', index: idx, id: MY_ID });
+            showPanel('sent');
         };
-        
         ui.choicesContainer.appendChild(btn);
     });
     
     showPanel('vote');
 }
 
-function sendVote(index) {
-    if (conn && conn.open) {
-        conn.send({ type: 'VOTE', optionIndex: index });
-        showPanel('sent');
-    } else {
-        alert("Mistet kontakten med læreren. Prøv å koble til på nytt.");
-        showPanel('login');
-        resetLogin();
-    }
-}
-
-// === START ===
 document.addEventListener('DOMContentLoaded', () => {
     ui.btnJoin.addEventListener('click', joinGame);
-    
-    // La brukeren trykke Enter i kodefeltet
-    ui.inputCode.addEventListener('keyup', (e) => {
-        if (e.key === 'Enter') joinGame();
-    });
+    ui.inputCode.addEventListener('keyup', (e) => { if (e.key==='Enter') joinGame(); });
 });
-
-/* Version: #6 */
+/* Version: #8 */
