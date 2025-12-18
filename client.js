@@ -1,8 +1,9 @@
-/* Version: #8 */
+/* Version: #9 */
 
 // === KONFIGURASJON ===
-const BROKER = "broker.emqx.io";
-const PORT = 8084; 
+const BROKER = "mqtt.eclipseprojects.io";
+const PORT = 443; 
+const PATH = "/mqtt";
 const MY_ID = "client_" + Math.random().toString(16).substr(2, 8);
 
 let client = null;
@@ -42,7 +43,8 @@ function joinGame() {
     ui.btnJoin.disabled = true;
     ui.btnJoin.textContent = "Kobler til...";
     
-    client = new Paho.MQTT.Client(BROKER, PORT, MY_ID);
+    // Vi må angi PATH her i konstruktøren
+    client = new Paho.MQTT.Client(BROKER, PORT, PATH, MY_ID);
     client.onConnectionLost = onConnectionLost;
     client.onMessageArrived = onMessageArrived;
 
@@ -50,23 +52,20 @@ function joinGame() {
         useSSL: true,
         onSuccess: onConnect,
         onFailure: onFail,
-        keepAliveInterval: 30
+        keepAliveInterval: 30,
+        timeout: 10
     };
     client.connect(options);
 }
 
 function onConnect() {
-    console.log("MQTT Tilkoblet");
+    console.log("MQTT Tilkoblet (Port 443)");
     connected = true;
     ui.statusDot.classList.add('status-connected');
     ui.statusText.textContent = "Tilkoblet";
-    
     showPanel('wait');
 
-    // Abonner på meldinger FRA host
     client.subscribe(`mentometer/${roomCode}/host`);
-
-    // Send "Jeg er her" melding
     sendMessage(`mentometer/${roomCode}/client`, { type: 'JOIN', id: MY_ID });
 }
 
@@ -81,7 +80,7 @@ function onConnectionLost(responseObject) {
         console.log("Mistet forbindelse: " + responseObject.errorMessage);
         ui.statusDot.classList.remove('status-connected');
         ui.statusText.textContent = "Frakoblet";
-        alert("Mistet kontakten med serveren.");
+        alert("Mistet kontakten.");
         showPanel('login');
         ui.btnJoin.disabled = false;
         ui.btnJoin.textContent = "Koble til";
@@ -91,15 +90,9 @@ function onConnectionLost(responseObject) {
 function onMessageArrived(message) {
     try {
         const data = JSON.parse(message.payloadString);
-        
-        if (data.type === 'POLL') {
-            renderPoll(data.data);
-        } else if (data.type === 'RESET') {
-            showPanel('wait');
-        }
-    } catch (e) {
-        console.error("Ugyldig data", e);
-    }
+        if (data.type === 'POLL') renderPoll(data.data);
+        else if (data.type === 'RESET') showPanel('wait');
+    } catch (e) { console.error("Datafeil", e); }
 }
 
 function sendMessage(topic, msgObj) {
@@ -130,4 +123,4 @@ document.addEventListener('DOMContentLoaded', () => {
     ui.btnJoin.addEventListener('click', joinGame);
     ui.inputCode.addEventListener('keyup', (e) => { if (e.key==='Enter') joinGame(); });
 });
-/* Version: #8 */
+/* Version: #9 */
