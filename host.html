@@ -1,13 +1,13 @@
-<!-- Version: #3 -->
+<!-- Version: #8 -->
 <!DOCTYPE html>
 <html lang="no">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lærer - Klasseromsavstemning</title>
+    <title>Lærer - MQTT Host</title>
     <link rel="stylesheet" href="style.css">
-    <!-- PeerJS bibliotek -->
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- Paho MQTT Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
 </head>
 <body>
 
@@ -17,69 +17,45 @@
                 <a href="index.html" style="text-decoration: none; color: #888;">&larr; Hjem</a>
                 <div>
                     <span class="status-indicator" id="status-dot"></span>
-                    <small id="status-text">Kobler til...</small>
+                    <small id="status-text">Kobler til skyen...</small>
                 </div>
             </div>
         </header>
 
-        <!-- PANEL 1: LOBBY INFO -->
         <div id="lobby-panel" class="card">
             <h2>Klasseroms-kode</h2>
             <div style="text-align: center;">
-                <p>Be elevene gå til nettsiden og bruke denne koden:</p>
+                <p>Koden er:</p>
                 <div id="room-code-display" class="big-code">----</div>
-                <p>
-                    <span id="player-count" style="font-weight: bold; color: var(--primary);">0</span> 
-                    elever tilkoblet
-                </p>
+                <p><span id="player-count">0</span> elever aktive</p>
+                <button id="btn-reconnect" class="btn btn-secondary hidden" style="font-size: 0.8rem; padding: 5px;">Koble til på nytt</button>
             </div>
         </div>
 
-        <!-- PANEL 2: OPPONER SPØRSMÅL -->
         <div id="create-panel" class="card hidden">
             <h2>Nytt Spørsmål</h2>
-            
-            <label>Spørsmål:</label>
-            <input type="text" id="input-question" placeholder="F.eks: Hva er hovedstaden i Peru?">
-            
-            <label>Svaralternativer:</label>
+            <input type="text" id="input-question" placeholder="Skriv spørsmål her...">
             <div id="options-container">
-                <!-- Her legges input-feltene -->
-                <div class="option-input-group">
-                    <input type="text" class="option-input" placeholder="Alternativ A">
-                </div>
-                <div class="option-input-group">
-                    <input type="text" class="option-input" placeholder="Alternativ B">
-                </div>
+                <input type="text" class="option-input" placeholder="Alternativ A">
+                <input type="text" class="option-input" placeholder="Alternativ B">
             </div>
-            
-            <button id="btn-add-option" class="btn btn-secondary" style="margin-bottom: 20px;">+ Legg til alternativ</button>
-            
+            <button id="btn-add-option" class="btn btn-secondary">+ Alternativ</button>
             <button id="btn-start-vote" class="btn">Start Avstemning</button>
         </div>
 
-        <!-- PANEL 3: LIVE RESULTATER -->
         <div id="results-panel" class="card hidden">
-            <h2 id="display-question">Spørsmål vises her...</h2>
-            
-            <div id="bars-container">
-                <!-- Søylene genereres her -->
-            </div>
-            
-            <div style="margin-top: 30px; text-align: center;">
-                <p style="color: #666; font-size: 0.9rem;">
-                    <span id="votes-received">0</span> stemmer mottatt
-                </p>
-                <button id="btn-stop-vote" class="btn btn-danger">Avslutt / Nytt Spørsmål</button>
+            <h2 id="display-question"></h2>
+            <div id="bars-container"></div>
+            <div style="margin-top: 20px; text-align: center;">
+                <p><span id="votes-received">0</span> stemmer</p>
+                <button id="btn-stop-vote" class="btn btn-danger">Avslutt</button>
             </div>
         </div>
-
-        <!-- DEBUG LOG (Skjult, for feilsøking) -->
-        <div id="debug-log">Logg start...</div>
-
+        
+        <div style="font-size: 0.7rem; color: #ccc; text-align: center;">Powered by HiveMQ/EMQX (MQTT)</div>
     </div>
 
     <script src="host.js"></script>
 </body>
 </html>
-<!-- Version: #3 -->
+<!-- Version: #8 -->
