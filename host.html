@@ -1,11 +1,11 @@
-<!-- Version: #1 -->
+<!-- Version: #2 -->
 <!DOCTYPE html>
 <html lang="no">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Host</title>
-    <!-- Firebase SDK (Google sin kode) -->
+    <title>Lærer (Host)</title>
+    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <!-- Din config -->
@@ -13,44 +13,49 @@
     <style>
         body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #f9f9f9; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        input { width: 100%; padding: 10px; margin: 5px 0; box-sizing: border-box; font-size: 1rem; }
-        button { width: 100%; padding: 15px; background: #28a745; color: white; border: none; border-radius: 5px; font-size: 1rem; cursor: pointer; margin-top: 10px; }
+        input { width: 100%; padding: 10px; margin: 5px 0; box-sizing: border-box; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
+        button { width: 100%; padding: 15px; background: #28a745; color: white; border: none; border-radius: 5px; font-size: 1rem; cursor: pointer; margin-top: 10px; font-weight: bold; }
+        button:hover { opacity: 0.9; }
         button.stop { background: #dc3545; }
         .bar-container { margin: 10px 0; }
         .bar-bg { background: #eee; height: 30px; border-radius: 15px; overflow: hidden; position: relative; }
         .bar-fill { background: #007bff; height: 100%; width: 0%; transition: width 0.5s; }
-        .bar-text { position: absolute; left: 10px; top: 5px; font-weight: bold; color: #000; z-index: 10; }
+        .bar-text { position: absolute; left: 10px; top: 5px; font-weight: bold; color: #333; z-index: 10; font-size: 0.9rem; }
         .hidden { display: none; }
-        #room-code { font-size: 3rem; font-weight: bold; letter-spacing: 5px; text-align: center; color: #333; margin: 10px 0; border: 2px dashed #ccc; }
+        #room-code { font-size: 3rem; font-weight: bold; letter-spacing: 5px; text-align: center; color: #333; margin: 10px 0; border: 2px dashed #ccc; padding: 10px; background: #fff; }
     </style>
 </head>
 <body>
 
-    <!-- LOBBY -->
+    <!-- LOBBY / OPPSETT -->
     <div id="setup-view" class="card">
-        <h2 style="text-align: center;">Din Romkode:</h2>
+        <h2 style="text-align: center; margin-top: 0;">Din Romkode</h2>
         <div id="room-code">...</div>
-        <p style="text-align: center; color: #666;">Del denne koden med elevene.</p>
+        <p style="text-align: center; color: #666; margin-bottom: 20px;">Del koden med elevene for å starte.</p>
         
-        <hr>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
         
-        <h3>Ny Poll</h3>
-        <input type="text" id="q-input" placeholder="Spørsmål">
-        <input type="text" class="opt-input" placeholder="Alternativ 1">
-        <input type="text" class="opt-input" placeholder="Alternativ 2">
-        <input type="text" class="opt-input" placeholder="Alternativ 3">
-        <input type="text" class="opt-input" placeholder="Alternativ 4">
-        <input type="text" class="opt-input" placeholder="Alternativ 5">
+        <h3 style="margin-bottom: 10px;">Opprett Avstemning</h3>
+        <label style="font-weight: bold;">Spørsmål:</label>
+        <input type="text" id="q-input" placeholder="Skriv spørsmålet her..." value="Hva gjør vi nå?">
+        
+        <label style="font-weight: bold; margin-top: 10px; display: block;">Svaralternativer:</label>
+        <!-- Her er standard-verdiene dine satt inn -->
+        <input type="text" class="opt-input" value="Alternativ A">
+        <input type="text" class="opt-input" value="Alternativ B">
+        <input type="text" class="opt-input" value="Alternativ C">
+        <input type="text" class="opt-input" value="Alternativ D">
+        <input type="text" class="opt-input" value="Vi gjør noe annet sprøtt!">
         
         <button onclick="startPoll()">START AVSTEMNING</button>
     </div>
 
-    <!-- RESULTAT -->
+    <!-- LIVE RESULTATER -->
     <div id="live-view" class="card hidden">
-        <h2 id="display-q"></h2>
+        <h2 id="display-q" style="margin-top: 0;"></h2>
         <div id="results-container"></div>
-        <div style="text-align: center; margin-top: 20px;">
-            <strong id="vote-count">0</strong> stemmer
+        <div style="text-align: center; margin-top: 20px; font-size: 1.2rem;">
+            <strong id="vote-count">0</strong> stemmer registrert
         </div>
         <button class="stop" onclick="stopPoll()">AVSLUTT / NY POLL</button>
     </div>
@@ -64,7 +69,6 @@
         let currentOptions = [];
 
         // Håndter stemmer som kommer inn (Live!)
-        // Dette lytter på endringer i databasen din hos Google
         db.ref('rooms/' + roomCode + '/votes').on('child_added', (snapshot) => {
             const voteIndex = snapshot.val();
             if (currentVotes[voteIndex] === undefined) currentVotes[voteIndex] = 0;
@@ -76,6 +80,7 @@
         function startPoll() {
             const q = document.getElementById('q-input').value;
             const opts = [];
+            // Hent verdien fra input-feltene (inkludert default-verdiene)
             document.querySelectorAll('.opt-input').forEach(i => {
                 if(i.value.trim()) opts.push(i.value.trim());
             });
@@ -130,9 +135,8 @@
         function stopPoll() {
             document.getElementById('live-view').classList.add('hidden');
             document.getElementById('setup-view').classList.remove('hidden');
-            // Vi sletter ikke data i databasen ennå, så elevene ser "Ferdig" inntil ny startes
         }
     </script>
 </body>
 </html>
-<!-- Version: #1 -->
+<!-- Version: #2 -->
