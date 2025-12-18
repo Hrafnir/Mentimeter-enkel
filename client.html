@@ -1,0 +1,64 @@
+<!-- Version: #5 -->
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elev - Klasseromsavstemning</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <a href="index.html" style="text-decoration: none; color: #888;">&larr; Hjem</a>
+                <div>
+                    <span class="status-indicator" id="status-dot"></span>
+                    <small id="status-text">Frakoblet</small>
+                </div>
+            </div>
+        </header>
+
+        <!-- PANEL 1: INNLOGGING -->
+        <div id="login-panel" class="card">
+            <h2>Bli med</h2>
+            <p>Skriv inn koden fra tavla:</p>
+            
+            <input type="text" id="input-code" placeholder="KODE" style="text-transform: uppercase; font-weight: bold; letter-spacing: 2px; text-align: center;">
+            
+            <button id="btn-join" class="btn">Koble til</button>
+        </div>
+
+        <!-- PANEL 2: VENTER -->
+        <div id="wait-panel" class="card hidden" style="text-align: center;">
+            <h2>Venter på spørsmål...</h2>
+            <div style="font-size: 3rem;">⏳</div>
+            <p>Se på tavla mens læreren gjør seg klar.</p>
+        </div>
+
+        <!-- PANEL 3: AVSTEMNING -->
+        <div id="vote-panel" class="card hidden">
+            <h2 id="question-text">Spørsmål kommer her...</h2>
+            <div id="choices-container">
+                <!-- Knapper genereres her -->
+            </div>
+        </div>
+
+        <!-- PANEL 4: STEMME SENDT -->
+        <div id="sent-panel" class="card hidden" style="text-align: center;">
+            <h2>Takk!</h2>
+            <div style="font-size: 3rem; color: var(--success);">✔</div>
+            <p>Din stemme er registrert.</p>
+            <p style="color: #666; font-size: 0.9rem;">Venter på neste spørsmål...</p>
+        </div>
+
+        <!-- DEBUG LOG -->
+        <div id="debug-log" style="display: none;"></div>
+    </div>
+
+    <script src="client.js"></script>
+</body>
+</html>
+<!-- Version: #5 -->
