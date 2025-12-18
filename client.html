@@ -1,49 +1,109 @@
-<!-- Version: #8 -->
+<!-- Version: #1 -->
 <!DOCTYPE html>
 <html lang="no">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elev - MQTT Client</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <title>Elev</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="config.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: 0 auto; background: #eee; text-align: center; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        input { font-size: 2rem; width: 150px; text-align: center; padding: 10px; letter-spacing: 5px; text-transform: uppercase; margin-bottom: 10px; }
+        button.join { background: #007bff; color: white; border: none; padding: 10px 20px; font-size: 1.2rem; border-radius: 5px; cursor: pointer; }
+        button.vote { display: block; width: 100%; padding: 15px; margin: 10px 0; background: white; border: 2px solid #007bff; color: #333; font-size: 1.1rem; border-radius: 8px; cursor: pointer; }
+        button.vote:hover { background: #eef7ff; }
+        .hidden { display: none; }
+    </style>
 </head>
 <body>
 
-    <div class="container">
-        <header>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <a href="index.html" style="text-decoration: none; color: #888;">&larr; Hjem</a>
-                <div>
-                    <span class="status-indicator" id="status-dot"></span>
-                    <small id="status-text">Frakoblet</small>
-                </div>
-            </div>
-        </header>
-
-        <div id="login-panel" class="card">
-            <h2>Bli med</h2>
-            <input type="text" id="input-code" placeholder="KODE" style="text-transform: uppercase; font-weight: bold; text-align: center;">
-            <button id="btn-join" class="btn">Koble til</button>
-        </div>
-
-        <div id="wait-panel" class="card hidden" style="text-align: center;">
-            <h2>Venter på lærer...</h2>
-            <div style="font-size: 3rem;">⏳</div>
-        </div>
-
-        <div id="vote-panel" class="card hidden">
-            <h2 id="question-text"></h2>
-            <div id="choices-container"></div>
-        </div>
-
-        <div id="sent-panel" class="card hidden" style="text-align: center;">
-            <h2>Stemme sendt!</h2>
-            <div style="font-size: 3rem; color: var(--success);">✔</div>
-        </div>
+    <!-- LOGIN -->
+    <div id="login-panel" class="card">
+        <h2>Romkode:</h2>
+        <input type="text" id="code-input" maxlength="4" placeholder="ABCD">
+        <br>
+        <button class="join" onclick="joinRoom()">KOBLE TIL</button>
     </div>
 
-    <script src="client.js"></script>
+    <!-- VENTER -->
+    <div id="wait-panel" class="card hidden">
+        <h2>Venter på lærer...</h2>
+        <div style="font-size: 3rem;">⏳</div>
+    </div>
+
+    <!-- STEMMING -->
+    <div id="vote-panel" class="card hidden">
+        <h2 id="q-text"></h2>
+        <div id="opts-container"></div>
+    </div>
+
+    <!-- FERDIG -->
+    <div id="done-panel" class="card hidden">
+        <h2>Stemme mottatt!</h2>
+        <div style="font-size: 3rem; color: green;">✔</div>
+        <p>Vent på neste spørsmål.</p>
+    </div>
+
+    <script>
+        let roomRef = null;
+        let lastTimestamp = 0;
+        let myVoteKey = null; // For å hindre dobbel-stemming i UI (valgfritt)
+
+        function joinRoom() {
+            const code = document.getElementById('code-input').value.toUpperCase();
+            if(code.length !== 4) return alert("Kode må være 4 tegn");
+
+            document.getElementById('login-panel').classList.add('hidden');
+            document.getElementById('wait-panel').classList.remove('hidden');
+
+            // Koble til rommet i databasen
+            roomRef = db.ref('rooms/' + code);
+
+            // Lytt på endringer (Når læreren starter ny poll)
+            roomRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if(!data) return; // Rom finnes ikke eller er tomt
+
+                // Sjekk om dette er en ny poll (basert på tidspunkt)
+                if (data.timestamp && data.timestamp !== lastTimestamp) {
+                    lastTimestamp = data.timestamp;
+                    showPoll(data);
+                }
+            });
+        }
+
+        function showPoll(data) {
+            document.getElementById('wait-panel').classList.add('hidden');
+            document.getElementById('done-panel').classList.add('hidden');
+            document.getElementById('vote-panel').classList.remove('hidden');
+
+            document.getElementById('q-text').innerText = data.question;
+            const container = document.getElementById('opts-container');
+            container.innerHTML = '';
+
+            if(data.options) {
+                data.options.forEach((opt, idx) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'vote';
+                    btn.innerText = opt;
+                    btn.onclick = () => sendVote(idx);
+                    container.appendChild(btn);
+                });
+            }
+        }
+
+        function sendVote(index) {
+            // Send stemme til databasen
+            // push() lager en unik ID for stemmen
+            roomRef.child('votes').push(index);
+
+            document.getElementById('vote-panel').classList.add('hidden');
+            document.getElementById('done-panel').classList.remove('hidden');
+        }
+    </script>
 </body>
 </html>
-<!-- Version: #8 -->
+<!-- Version: #1 -->
