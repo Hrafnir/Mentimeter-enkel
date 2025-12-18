@@ -1,61 +1,138 @@
-<!-- Version: #8 -->
+<!-- Version: #1 -->
 <!DOCTYPE html>
 <html lang="no">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lærer - MQTT Host</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- Paho MQTT Library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <title>Host</title>
+    <!-- Firebase SDK (Google sin kode) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <!-- Din config -->
+    <script src="config.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #f9f9f9; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input { width: 100%; padding: 10px; margin: 5px 0; box-sizing: border-box; font-size: 1rem; }
+        button { width: 100%; padding: 15px; background: #28a745; color: white; border: none; border-radius: 5px; font-size: 1rem; cursor: pointer; margin-top: 10px; }
+        button.stop { background: #dc3545; }
+        .bar-container { margin: 10px 0; }
+        .bar-bg { background: #eee; height: 30px; border-radius: 15px; overflow: hidden; position: relative; }
+        .bar-fill { background: #007bff; height: 100%; width: 0%; transition: width 0.5s; }
+        .bar-text { position: absolute; left: 10px; top: 5px; font-weight: bold; color: #000; z-index: 10; }
+        .hidden { display: none; }
+        #room-code { font-size: 3rem; font-weight: bold; letter-spacing: 5px; text-align: center; color: #333; margin: 10px 0; border: 2px dashed #ccc; }
+    </style>
 </head>
 <body>
 
-    <div class="container">
-        <header>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <a href="index.html" style="text-decoration: none; color: #888;">&larr; Hjem</a>
-                <div>
-                    <span class="status-indicator" id="status-dot"></span>
-                    <small id="status-text">Kobler til skyen...</small>
-                </div>
-            </div>
-        </header>
-
-        <div id="lobby-panel" class="card">
-            <h2>Klasseroms-kode</h2>
-            <div style="text-align: center;">
-                <p>Koden er:</p>
-                <div id="room-code-display" class="big-code">----</div>
-                <p><span id="player-count">0</span> elever aktive</p>
-                <button id="btn-reconnect" class="btn btn-secondary hidden" style="font-size: 0.8rem; padding: 5px;">Koble til på nytt</button>
-            </div>
-        </div>
-
-        <div id="create-panel" class="card hidden">
-            <h2>Nytt Spørsmål</h2>
-            <input type="text" id="input-question" placeholder="Skriv spørsmål her...">
-            <div id="options-container">
-                <input type="text" class="option-input" placeholder="Alternativ A">
-                <input type="text" class="option-input" placeholder="Alternativ B">
-            </div>
-            <button id="btn-add-option" class="btn btn-secondary">+ Alternativ</button>
-            <button id="btn-start-vote" class="btn">Start Avstemning</button>
-        </div>
-
-        <div id="results-panel" class="card hidden">
-            <h2 id="display-question"></h2>
-            <div id="bars-container"></div>
-            <div style="margin-top: 20px; text-align: center;">
-                <p><span id="votes-received">0</span> stemmer</p>
-                <button id="btn-stop-vote" class="btn btn-danger">Avslutt</button>
-            </div>
-        </div>
+    <!-- LOBBY -->
+    <div id="setup-view" class="card">
+        <h2 style="text-align: center;">Din Romkode:</h2>
+        <div id="room-code">...</div>
+        <p style="text-align: center; color: #666;">Del denne koden med elevene.</p>
         
-        <div style="font-size: 0.7rem; color: #ccc; text-align: center;">Powered by HiveMQ/EMQX (MQTT)</div>
+        <hr>
+        
+        <h3>Ny Poll</h3>
+        <input type="text" id="q-input" placeholder="Spørsmål">
+        <input type="text" class="opt-input" placeholder="Alternativ 1">
+        <input type="text" class="opt-input" placeholder="Alternativ 2">
+        <input type="text" class="opt-input" placeholder="Alternativ 3">
+        <input type="text" class="opt-input" placeholder="Alternativ 4">
+        <input type="text" class="opt-input" placeholder="Alternativ 5">
+        
+        <button onclick="startPoll()">START AVSTEMNING</button>
     </div>
 
-    <script src="host.js"></script>
+    <!-- RESULTAT -->
+    <div id="live-view" class="card hidden">
+        <h2 id="display-q"></h2>
+        <div id="results-container"></div>
+        <div style="text-align: center; margin-top: 20px;">
+            <strong id="vote-count">0</strong> stemmer
+        </div>
+        <button class="stop" onclick="stopPoll()">AVSLUTT / NY POLL</button>
+    </div>
+
+    <script>
+        // Lag en tilfeldig kode (A-Z)
+        const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+        document.getElementById('room-code').innerText = roomCode;
+
+        let currentVotes = {};
+        let currentOptions = [];
+
+        // Håndter stemmer som kommer inn (Live!)
+        // Dette lytter på endringer i databasen din hos Google
+        db.ref('rooms/' + roomCode + '/votes').on('child_added', (snapshot) => {
+            const voteIndex = snapshot.val();
+            if (currentVotes[voteIndex] === undefined) currentVotes[voteIndex] = 0;
+            currentVotes[voteIndex]++;
+            renderResults();
+        });
+
+        // Start en ny poll
+        function startPoll() {
+            const q = document.getElementById('q-input').value;
+            const opts = [];
+            document.querySelectorAll('.opt-input').forEach(i => {
+                if(i.value.trim()) opts.push(i.value.trim());
+            });
+
+            if(!q || opts.length < 2) return alert("Fyll ut spørsmål og minst 2 svar.");
+
+            // 1. Nullstill lokalt
+            currentVotes = {};
+            opts.forEach((_, i) => currentVotes[i] = 0);
+            currentOptions = opts;
+
+            // 2. Last opp til Firebase (Dette resetter stemmer for dette rommet)
+            db.ref('rooms/' + roomCode).set({
+                question: q,
+                options: opts,
+                timestamp: Date.now(),
+                votes: {} // Tøm stemmer
+            });
+
+            // 3. Bytt visning
+            document.getElementById('setup-view').classList.add('hidden');
+            document.getElementById('live-view').classList.remove('hidden');
+            document.getElementById('display-q').innerText = q;
+            renderResults();
+        }
+
+        // Tegn søyler
+        function renderResults() {
+            const container = document.getElementById('results-container');
+            container.innerHTML = '';
+            
+            let total = 0;
+            Object.values(currentVotes).forEach(v => total += v);
+            document.getElementById('vote-count').innerText = total;
+
+            currentOptions.forEach((opt, idx) => {
+                const count = currentVotes[idx] || 0;
+                const pct = total > 0 ? (count / total) * 100 : 0;
+                
+                container.innerHTML += `
+                    <div class="bar-container">
+                        <div class="bar-bg">
+                            <span class="bar-text">${opt}: ${count}</span>
+                            <div class="bar-fill" style="width: ${pct}%"></div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // Stopp (nullstill UI)
+        function stopPoll() {
+            document.getElementById('live-view').classList.add('hidden');
+            document.getElementById('setup-view').classList.remove('hidden');
+            // Vi sletter ikke data i databasen ennå, så elevene ser "Ferdig" inntil ny startes
+        }
+    </script>
 </body>
 </html>
-<!-- Version: #8 -->
+<!-- Version: #1 -->
