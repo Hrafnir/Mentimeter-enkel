@@ -1,197 +1,203 @@
-/* Version: #7 */
+/* Version: #8 */
 
-// === TILSTAND ===
-let peer = null;
-let connections = []; 
-let currentPoll = null; 
-let voteCounts = {}; 
+// === KONFIGURASJON ===
+const BROKER = "broker.emqx.io"; // Offentlig, stabil broker
+const PORT = 8084; // WSS (Secure WebSocket) - Går gjennom de fleste brannmurer
+const CLIENT_ID = "host_" + Math.random().toString(16).substr(2, 8);
 
-// === DOM ELEMENTER ===
+let client = null;
+let roomCode = "";
+let currentPoll = null;
+let voteCounts = {};
+let activePlayers = new Set(); // Bruker Set for å telle unike Client ID-er
+
+// === UI ELEMENTER ===
 const ui = {
     statusDot: document.getElementById('status-dot'),
     statusText: document.getElementById('status-text'),
     roomCode: document.getElementById('room-code-display'),
     playerCount: document.getElementById('player-count'),
-    
     lobbyPanel: document.getElementById('lobby-panel'),
     createPanel: document.getElementById('create-panel'),
     resultsPanel: document.getElementById('results-panel'),
-    
     inputQuestion: document.getElementById('input-question'),
     optionsContainer: document.getElementById('options-container'),
     btnAddOption: document.getElementById('btn-add-option'),
     btnStart: document.getElementById('btn-start-vote'),
     btnStop: document.getElementById('btn-stop-vote'),
-    
     displayQuestion: document.getElementById('display-question'),
     barsContainer: document.getElementById('bars-container'),
     votesReceived: document.getElementById('votes-received'),
-    
-    log: document.getElementById('debug-log')
+    btnReconnect: document.getElementById('btn-reconnect')
 };
 
-// === LOGGING ===
-function log(msg) {
-    console.log(msg);
-    if(ui.log) ui.log.textContent = msg;
+// === INIT ===
+function generateCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    let code = "";
+    for(let i=0; i<4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+    return code;
 }
 
-// === PEERJS SETUP ===
-function initPeer() {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-    let id = "";
-    for(let i=0; i<4; i++) id += chars.charAt(Math.floor(Math.random() * chars.length));
+function initMQTT() {
+    roomCode = generateCode();
+    ui.roomCode.textContent = roomCode;
     
-    log(`Starter server med ID: ${id}...`);
+    console.log(`Kobler til MQTT broker ${BROKER}:${PORT} som ${CLIENT_ID}`);
     
-    // VIKTIG ENDRING: Vi legger til STUN-servere for å hjelpe tilkoblingen gjennom brannmurer
-    const peerConfig = {
-        debug: 1,
-        config: {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' },
-                { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun4.l.google.com:19302' }
-            ]
-        }
+    // Opprett klient
+    client = new Paho.MQTT.Client(BROKER, PORT, CLIENT_ID);
+
+    // Callbacks
+    client.onConnectionLost = onConnectionLost;
+    client.onMessageArrived = onMessageArrived;
+
+    // Koble til med SSL (useSSL: true er viktig for GitHub Pages https)
+    const options = {
+        useSSL: true,
+        onSuccess: onConnect,
+        onFailure: onFail,
+        keepAliveInterval: 30
     };
     
-    peer = new Peer(id, peerConfig);
+    client.connect(options);
+}
 
-    peer.on('open', (peerId) => {
-        log(`Server klar. Kode: ${peerId}`);
-        ui.roomCode.textContent = peerId;
-        ui.statusDot.classList.add('status-connected');
-        ui.statusText.textContent = "Online";
-        ui.createPanel.classList.remove('hidden');
-    });
+function onConnect() {
+    console.log("MQTT Tilkoblet!");
+    ui.statusDot.classList.add('status-connected');
+    ui.statusText.textContent = "Online (Skyen)";
+    ui.createPanel.classList.remove('hidden');
+    ui.btnReconnect.classList.add('hidden');
 
-    peer.on('connection', (conn) => {
-        handleConnection(conn);
-    });
+    // Abonner på meldinger fra klienter i dette rommet
+    // Topic: mentometer/[ROMKODE]/client
+    client.subscribe(`mentometer/${roomCode}/client`);
+}
 
-    peer.on('error', (err) => {
-        log(`Feil: ${err.type}`);
-        if(err.type === 'unavailable-id') initPeer(); 
-    });
-    
-    peer.on('disconnected', () => {
-        ui.statusText.textContent = "Mistet nettverk";
+function onFail(responseObject) {
+    console.log("MQTT Feilet: " + responseObject.errorMessage);
+    ui.statusText.textContent = "Tilkobling feilet";
+    ui.btnReconnect.classList.remove('hidden');
+}
+
+function onConnectionLost(responseObject) {
+    if (responseObject.errorCode !== 0) {
+        console.log("MQTT Mistet forbindelse: " + responseObject.errorMessage);
         ui.statusDot.classList.remove('status-connected');
-    });
+        ui.statusText.textContent = "Mistet nettet";
+        ui.btnReconnect.classList.remove('hidden');
+    }
 }
 
-function handleConnection(conn) {
-    conn.on('open', () => {
-        connections.push(conn);
-        updateCount();
-        if (currentPoll) {
-            conn.send({ type: 'POLL', data: currentPoll });
+function onMessageArrived(message) {
+    const topic = message.destinationName;
+    const payload = message.payloadString;
+    
+    try {
+        const data = JSON.parse(payload);
+        
+        // Melding: Noen ble med (Heartbeat/Join)
+        if (data.type === 'JOIN') {
+            activePlayers.add(data.id);
+            ui.playerCount.textContent = activePlayers.size;
+            
+            // Send nåværende status tilbake til den som nettopp joinet
+            if (currentPoll) {
+                sendMessage(`mentometer/${roomCode}/host`, { type: 'POLL', data: currentPoll });
+            }
         }
-    });
-
-    conn.on('data', (data) => {
+        
+        // Melding: Noen stemte
         if (data.type === 'VOTE') {
-            registerVote(data.optionIndex);
+            if (currentPoll && voteCounts[data.index] !== undefined) {
+                voteCounts[data.index]++;
+                renderBars();
+                // Også registrer som aktiv hvis vi ikke visste det
+                activePlayers.add(data.id); 
+                ui.playerCount.textContent = activePlayers.size;
+            }
         }
-    });
 
-    conn.on('close', () => {
-        connections = connections.filter(c => c !== conn);
-        updateCount();
-    });
+    } catch (e) {
+        console.error("Feil JSON:", e);
+    }
 }
 
-function updateCount() {
-    ui.playerCount.textContent = connections.length;
+function sendMessage(topic, msgObj) {
+    const message = new Paho.MQTT.Message(JSON.stringify(msgObj));
+    message.destinationName = topic;
+    client.send(message);
 }
 
-// === AVSTEMNINGS-LOGIKK ===
+// === SPILL LOGIKK ===
 
-function addOptionField() {
-    const div = document.createElement('div');
-    div.className = 'option-input-group';
-    div.innerHTML = `<input type="text" class="option-input" placeholder="Alternativ">`;
-    ui.optionsContainer.appendChild(div);
+function addOption() {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'option-input';
+    input.placeholder = "Alternativ";
+    ui.optionsContainer.appendChild(input);
 }
 
 function startVote() {
-    const question = ui.inputQuestion.value.trim();
-    if (!question) return alert("Du må skrive et spørsmål!");
-
-    const inputs = document.querySelectorAll('.option-input');
-    const options = [];
-    inputs.forEach(input => {
-        const val = input.value.trim();
-        if (val) options.push(val);
-    });
-
-    if (options.length < 2) return alert("Du må ha minst 2 alternativer!");
-
-    voteCounts = {};
-    options.forEach((_, idx) => voteCounts[idx] = 0);
+    const q = ui.inputQuestion.value.trim();
+    if (!q) return alert("Mangler spørsmål");
     
-    currentPoll = { question, options };
+    const opts = [];
+    document.querySelectorAll('.option-input').forEach(i => {
+        if (i.value.trim()) opts.push(i.value.trim());
+    });
+    
+    if (opts.length < 2) return alert("Minst 2 alternativer");
+
+    currentPoll = { question: q, options: opts };
+    voteCounts = {};
+    opts.forEach((_, i) => voteCounts[i] = 0);
     
     ui.createPanel.classList.add('hidden');
     ui.resultsPanel.classList.remove('hidden');
-    ui.displayQuestion.textContent = question;
+    ui.displayQuestion.textContent = q;
     renderBars();
 
-    broadcast('POLL', currentPoll);
+    // Send til alle abonnenter (Topic: mentometer/KODE/host)
+    sendMessage(`mentometer/${roomCode}/host`, { type: 'POLL', data: currentPoll });
 }
 
 function stopVote() {
-    broadcast('RESET', null);
     currentPoll = null;
+    sendMessage(`mentometer/${roomCode}/host`, { type: 'RESET' });
     ui.resultsPanel.classList.add('hidden');
     ui.createPanel.classList.remove('hidden');
 }
 
-function broadcast(type, payload) {
-    connections.forEach(conn => {
-        if (conn.open) conn.send({ type, data: payload });
-    });
-}
-
-function registerVote(index) {
-    if (!currentPoll) return;
-    if (voteCounts[index] !== undefined) {
-        voteCounts[index]++;
-        renderBars();
-    }
-}
-
 function renderBars() {
     ui.barsContainer.innerHTML = '';
-    const totalVotes = Object.values(voteCounts).reduce((a, b) => a + b, 0);
-    ui.votesReceived.textContent = totalVotes;
+    const total = Object.values(voteCounts).reduce((a, b) => a + b, 0);
+    ui.votesReceived.textContent = total;
 
-    currentPoll.options.forEach((optText, index) => {
-        const count = voteCounts[index] || 0;
-        const pct = totalVotes > 0 ? (count / totalVotes) * 100 : 0;
+    currentPoll.options.forEach((opt, idx) => {
+        const count = voteCounts[idx] || 0;
+        const pct = total > 0 ? (count / total) * 100 : 0;
         
         const div = document.createElement('div');
         div.className = 'result-bar-container';
         div.innerHTML = `
-            <div class="result-header">
-                <span>${optText}</span>
-                <span>${count} (${Math.round(pct)}%)</span>
-            </div>
-            <div class="result-track">
-                <div class="result-fill" style="width: ${pct}%"></div>
-            </div>
+            <div class="result-header"><span>${opt}</span><span>${count} (${Math.round(pct)}%)</span></div>
+            <div class="result-track"><div class="result-fill" style="width:${pct}%"></div></div>
         `;
         ui.barsContainer.appendChild(div);
     });
 }
 
+// === START ===
 document.addEventListener('DOMContentLoaded', () => {
-    initPeer();
-    ui.btnAddOption.addEventListener('click', addOptionField);
+    initMQTT();
+    ui.btnAddOption.addEventListener('click', addOption);
     ui.btnStart.addEventListener('click', startVote);
     ui.btnStop.addEventListener('click', stopVote);
+    ui.btnReconnect.addEventListener('click', () => {
+        window.location.reload();
+    });
 });
-/* Version: #7 */
+/* Version: #8 */
