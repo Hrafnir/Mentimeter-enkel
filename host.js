@@ -1,15 +1,18 @@
-/* Version: #8 */
+/* Version: #9 */
 
 // === KONFIGURASJON ===
-const BROKER = "broker.emqx.io"; // Offentlig, stabil broker
-const PORT = 8084; // WSS (Secure WebSocket) - Går gjennom de fleste brannmurer
+// Vi bytter til Eclipse sin broker på port 443 (Standard HTTPS).
+// Dette går gjennom nesten alle brannmurer.
+const BROKER = "mqtt.eclipseprojects.io";
+const PORT = 443; 
+const PATH = "/mqtt"; 
 const CLIENT_ID = "host_" + Math.random().toString(16).substr(2, 8);
 
 let client = null;
 let roomCode = "";
 let currentPoll = null;
 let voteCounts = {};
-let activePlayers = new Set(); // Bruker Set for å telle unike Client ID-er
+let activePlayers = new Set(); 
 
 // === UI ELEMENTER ===
 const ui = {
@@ -43,35 +46,36 @@ function initMQTT() {
     roomCode = generateCode();
     ui.roomCode.textContent = roomCode;
     
-    console.log(`Kobler til MQTT broker ${BROKER}:${PORT} som ${CLIENT_ID}`);
+    console.log(`Kobler til ${BROKER}:${PORT}${PATH} som ${CLIENT_ID}`);
     
-    // Opprett klient
-    client = new Paho.MQTT.Client(BROKER, PORT, CLIENT_ID);
+    client = new Paho.MQTT.Client(BROKER, PORT, PATH, CLIENT_ID);
 
-    // Callbacks
     client.onConnectionLost = onConnectionLost;
     client.onMessageArrived = onMessageArrived;
 
-    // Koble til med SSL (useSSL: true er viktig for GitHub Pages https)
     const options = {
-        useSSL: true,
+        useSSL: true, // Påkrevd for port 443
         onSuccess: onConnect,
         onFailure: onFail,
-        keepAliveInterval: 30
+        keepAliveInterval: 30,
+        timeout: 10
     };
     
-    client.connect(options);
+    try {
+        client.connect(options);
+    } catch (e) {
+        console.error("Connect error:", e);
+        onFail({ errorMessage: e.message });
+    }
 }
 
 function onConnect() {
     console.log("MQTT Tilkoblet!");
     ui.statusDot.classList.add('status-connected');
-    ui.statusText.textContent = "Online (Skyen)";
+    ui.statusText.textContent = "Online (Brannmur-sikker)";
     ui.createPanel.classList.remove('hidden');
     ui.btnReconnect.classList.add('hidden');
 
-    // Abonner på meldinger fra klienter i dette rommet
-    // Topic: mentometer/[ROMKODE]/client
     client.subscribe(`mentometer/${roomCode}/client`);
 }
 
@@ -91,40 +95,28 @@ function onConnectionLost(responseObject) {
 }
 
 function onMessageArrived(message) {
-    const topic = message.destinationName;
-    const payload = message.payloadString;
-    
     try {
-        const data = JSON.parse(payload);
+        const data = JSON.parse(message.payloadString);
         
-        // Melding: Noen ble med (Heartbeat/Join)
         if (data.type === 'JOIN') {
             activePlayers.add(data.id);
             ui.playerCount.textContent = activePlayers.size;
-            
-            // Send nåværende status tilbake til den som nettopp joinet
-            if (currentPoll) {
-                sendMessage(`mentometer/${roomCode}/host`, { type: 'POLL', data: currentPoll });
-            }
+            if (currentPoll) sendMessage(`mentometer/${roomCode}/host`, { type: 'POLL', data: currentPoll });
         }
         
-        // Melding: Noen stemte
         if (data.type === 'VOTE') {
             if (currentPoll && voteCounts[data.index] !== undefined) {
                 voteCounts[data.index]++;
                 renderBars();
-                // Også registrer som aktiv hvis vi ikke visste det
                 activePlayers.add(data.id); 
                 ui.playerCount.textContent = activePlayers.size;
             }
         }
-
-    } catch (e) {
-        console.error("Feil JSON:", e);
-    }
+    } catch (e) { console.error("Datafeil", e); }
 }
 
 function sendMessage(topic, msgObj) {
+    if (!client.isConnected()) return;
     const message = new Paho.MQTT.Message(JSON.stringify(msgObj));
     message.destinationName = topic;
     client.send(message);
@@ -160,7 +152,6 @@ function startVote() {
     ui.displayQuestion.textContent = q;
     renderBars();
 
-    // Send til alle abonnenter (Topic: mentometer/KODE/host)
     sendMessage(`mentometer/${roomCode}/host`, { type: 'POLL', data: currentPoll });
 }
 
@@ -179,7 +170,6 @@ function renderBars() {
     currentPoll.options.forEach((opt, idx) => {
         const count = voteCounts[idx] || 0;
         const pct = total > 0 ? (count / total) * 100 : 0;
-        
         const div = document.createElement('div');
         div.className = 'result-bar-container';
         div.innerHTML = `
@@ -190,14 +180,11 @@ function renderBars() {
     });
 }
 
-// === START ===
 document.addEventListener('DOMContentLoaded', () => {
     initMQTT();
     ui.btnAddOption.addEventListener('click', addOption);
     ui.btnStart.addEventListener('click', startVote);
     ui.btnStop.addEventListener('click', stopVote);
-    ui.btnReconnect.addEventListener('click', () => {
-        window.location.reload();
-    });
+    ui.btnReconnect.addEventListener('click', () => window.location.reload());
 });
-/* Version: #8 */
+/* Version: #9 */
