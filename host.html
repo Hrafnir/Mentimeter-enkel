@@ -1,14 +1,12 @@
-<!-- Version: #2 -->
+<!-- Version: #3 -->
 <!DOCTYPE html>
 <html lang="no">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lærer (Host)</title>
-    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <!-- Din config -->
     <script src="config.js"></script>
     <style>
         body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #f9f9f9; }
@@ -27,12 +25,11 @@
 </head>
 <body>
 
-    <!-- LOBBY / OPPSETT -->
+    <!-- LOBBY -->
     <div id="setup-view" class="card">
         <h2 style="text-align: center; margin-top: 0;">Din Romkode</h2>
         <div id="room-code">...</div>
-        <p style="text-align: center; color: #666; margin-bottom: 20px;">Del koden med elevene for å starte.</p>
-        
+        <p style="text-align: center; color: #666; margin-bottom: 20px;">Del koden med elevene.</p>
         <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
         
         <h3 style="margin-bottom: 10px;">Opprett Avstemning</h3>
@@ -40,7 +37,6 @@
         <input type="text" id="q-input" placeholder="Skriv spørsmålet her..." value="Hva gjør vi nå?">
         
         <label style="font-weight: bold; margin-top: 10px; display: block;">Svaralternativer:</label>
-        <!-- Her er standard-verdiene dine satt inn -->
         <input type="text" class="opt-input" value="Alternativ A">
         <input type="text" class="opt-input" value="Alternativ B">
         <input type="text" class="opt-input" value="Alternativ C">
@@ -57,18 +53,17 @@
         <div style="text-align: center; margin-top: 20px; font-size: 1.2rem;">
             <strong id="vote-count">0</strong> stemmer registrert
         </div>
-        <button class="stop" onclick="stopPoll()">AVSLUTT / NY POLL</button>
+        <button class="stop" onclick="stopPoll()">AVSLUTT / RESETT ELEVER</button>
     </div>
 
     <script>
-        // Lag en tilfeldig kode (A-Z)
         const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
         document.getElementById('room-code').innerText = roomCode;
 
         let currentVotes = {};
         let currentOptions = [];
 
-        // Håndter stemmer som kommer inn (Live!)
+        // Håndter stemmer live
         db.ref('rooms/' + roomCode + '/votes').on('child_added', (snapshot) => {
             const voteIndex = snapshot.val();
             if (currentVotes[voteIndex] === undefined) currentVotes[voteIndex] = 0;
@@ -76,38 +71,34 @@
             renderResults();
         });
 
-        // Start en ny poll
         function startPoll() {
             const q = document.getElementById('q-input').value;
             const opts = [];
-            // Hent verdien fra input-feltene (inkludert default-verdiene)
             document.querySelectorAll('.opt-input').forEach(i => {
                 if(i.value.trim()) opts.push(i.value.trim());
             });
 
             if(!q || opts.length < 2) return alert("Fyll ut spørsmål og minst 2 svar.");
 
-            // 1. Nullstill lokalt
             currentVotes = {};
             opts.forEach((_, i) => currentVotes[i] = 0);
             currentOptions = opts;
 
-            // 2. Last opp til Firebase (Dette resetter stemmer for dette rommet)
+            // Last opp ny poll til Firebase
             db.ref('rooms/' + roomCode).set({
                 question: q,
                 options: opts,
                 timestamp: Date.now(),
-                votes: {} // Tøm stemmer
+                state: 'active', // Markerer at vi er i gang
+                votes: {} 
             });
 
-            // 3. Bytt visning
             document.getElementById('setup-view').classList.add('hidden');
             document.getElementById('live-view').classList.remove('hidden');
             document.getElementById('display-q').innerText = q;
             renderResults();
         }
 
-        // Tegn søyler
         function renderResults() {
             const container = document.getElementById('results-container');
             container.innerHTML = '';
@@ -131,12 +122,17 @@
             });
         }
 
-        // Stopp (nullstill UI)
+        // ENDRING HER: Sender beskjed til elevene om å vente
         function stopPoll() {
             document.getElementById('live-view').classList.add('hidden');
             document.getElementById('setup-view').classList.remove('hidden');
+            
+            // Fortell databasen at vi venter
+            db.ref('rooms/' + roomCode).set({
+                state: 'waiting'
+            });
         }
     </script>
 </body>
 </html>
-<!-- Version: #2 -->
+<!-- Version: #3 -->
