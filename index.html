@@ -1,0 +1,68 @@
+<!-- Version: #1 -->
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Klasseroms-Avstemning</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Minimalistisk stil før style.css er på plass */
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f2f5;
+            margin: 0;
+        }
+        .card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        h1 { color: #333; margin-bottom: 2rem; }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 1.5rem;
+            margin: 10px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-decoration: none;
+            cursor: pointer;
+            transition: transform 0.1s;
+            box-sizing: border-box;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-host { background-color: #2b2d42; color: white; }
+        .btn-client { background-color: #3d5a80; color: white; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>Klasseroms-stemming</h1>
+        <p>Enkelt verktøy for anonym avstemning i klassen.</p>
+        
+        <a href="host.html" class="btn btn-host">Lærer (Start nytt rom)</a>
+        <a href="client.html" class="btn btn-client">Elev (Bli med)</a>
+        
+        <div style="margin-top: 20px; font-size: 0.8rem; color: #888;">
+            Krever ingen innlogging.
+        </div>
+    </div>
+
+    <script>
+        console.log("Index lastet. Versjon #1");
+    </script>
+</body>
+</html>
+<!-- Version: #1 -->
