@@ -1,10 +1,10 @@
-/* Version: #4 */
+/* Version: #7 */
 
 // === TILSTAND ===
 let peer = null;
-let connections = []; // Liste over alle tilkoblede elever
-let currentPoll = null; // { question: "", options: [] }
-let voteCounts = {}; // { 0: 5, 1: 3 ... } (index -> antall stemmer)
+let connections = []; 
+let currentPoll = null; 
+let voteCounts = {}; 
 
 // === DOM ELEMENTER ===
 const ui = {
@@ -33,27 +33,38 @@ const ui = {
 // === LOGGING ===
 function log(msg) {
     console.log(msg);
-    ui.log.textContent = msg;
+    if(ui.log) ui.log.textContent = msg;
 }
 
 // === PEERJS SETUP ===
 function initPeer() {
-    // Generer en tilfeldig 4-bokstavs ID (A-Z)
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     let id = "";
     for(let i=0; i<4; i++) id += chars.charAt(Math.floor(Math.random() * chars.length));
     
     log(`Starter server med ID: ${id}...`);
     
-    peer = new Peer(id, { debug: 1 });
+    // VIKTIG ENDRING: Vi legger til STUN-servere for å hjelpe tilkoblingen gjennom brannmurer
+    const peerConfig = {
+        debug: 1,
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' }
+            ]
+        }
+    };
+    
+    peer = new Peer(id, peerConfig);
 
     peer.on('open', (peerId) => {
         log(`Server klar. Kode: ${peerId}`);
         ui.roomCode.textContent = peerId;
         ui.statusDot.classList.add('status-connected');
         ui.statusText.textContent = "Online";
-        
-        // Vis opprettelses-panelet
         ui.createPanel.classList.remove('hidden');
     });
 
@@ -63,7 +74,7 @@ function initPeer() {
 
     peer.on('error', (err) => {
         log(`Feil: ${err.type}`);
-        if(err.type === 'unavailable-id') initPeer(); // Prøv igjen hvis uheldig kollisjon
+        if(err.type === 'unavailable-id') initPeer(); 
     });
     
     peer.on('disconnected', () => {
@@ -76,8 +87,6 @@ function handleConnection(conn) {
     conn.on('open', () => {
         connections.push(conn);
         updateCount();
-        
-        // Hvis en avstemning pågår, send den til den nye eleven
         if (currentPoll) {
             conn.send({ type: 'POLL', data: currentPoll });
         }
@@ -112,7 +121,6 @@ function startVote() {
     const question = ui.inputQuestion.value.trim();
     if (!question) return alert("Du må skrive et spørsmål!");
 
-    // Samle alternativer
     const inputs = document.querySelectorAll('.option-input');
     const options = [];
     inputs.forEach(input => {
@@ -122,31 +130,24 @@ function startVote() {
 
     if (options.length < 2) return alert("Du må ha minst 2 alternativer!");
 
-    // Nullstill stemmer
     voteCounts = {};
     options.forEach((_, idx) => voteCounts[idx] = 0);
     
     currentPoll = { question, options };
     
-    // Oppdater UI
     ui.createPanel.classList.add('hidden');
     ui.resultsPanel.classList.remove('hidden');
     ui.displayQuestion.textContent = question;
     renderBars();
 
-    // Send til alle elever
     broadcast('POLL', currentPoll);
 }
 
 function stopVote() {
-    // Send beskjed om at det er slutt (valgfritt, men pent)
     broadcast('RESET', null);
-    
     currentPoll = null;
     ui.resultsPanel.classList.add('hidden');
     ui.createPanel.classList.remove('hidden');
-    
-    // Tøm input for neste runde? Nei, la det stå så læreren kan redigere lett.
 }
 
 function broadcast(type, payload) {
@@ -157,9 +158,6 @@ function broadcast(type, payload) {
 
 function registerVote(index) {
     if (!currentPoll) return;
-    
-    // Enkel telling. (Her sjekker vi ikke om samme person stemmer to ganger, 
-    // men klienten sperrer for det. I en seriøs app ville vi brukt peerId for å sjekke.)
     if (voteCounts[index] !== undefined) {
         voteCounts[index]++;
         renderBars();
@@ -168,7 +166,6 @@ function registerVote(index) {
 
 function renderBars() {
     ui.barsContainer.innerHTML = '';
-    
     const totalVotes = Object.values(voteCounts).reduce((a, b) => a + b, 0);
     ui.votesReceived.textContent = totalVotes;
 
@@ -191,12 +188,10 @@ function renderBars() {
     });
 }
 
-// === EVENT LISTENERS ===
 document.addEventListener('DOMContentLoaded', () => {
     initPeer();
-    
     ui.btnAddOption.addEventListener('click', addOptionField);
     ui.btnStart.addEventListener('click', startVote);
     ui.btnStop.addEventListener('click', stopVote);
 });
-/* Version: #4 */
+/* Version: #7 */
